@@ -1,125 +1,247 @@
+// ignore_for_file: prefer_const_constructors
+
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final cameras = await availableCameras();
+  final firstCamera = cameras.first;
+
+  runApp(MyApp(camera: firstCamera));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MyApp extends StatefulWidget {
+  final CameraDescription camera;
 
-  // This widget is the root of your application.
+  const MyApp({Key? key, required this.camera}) : super(key: key);
+
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo new',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a blue toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  CameraController? _controller;
+  Future<void>? _initializeControllerFuture;
+  bool _isStreaming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = CameraController(widget.camera, ResolutionPreset.medium);
+    _initializeControllerFuture = _controller!.initialize();
   }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
+  void dispose() {
+    _controller!.dispose();
+    super.dispose();
+  }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  Future<void> _startStreaming() async {
+    await _initializeControllerFuture;
 
-  void _incrementCounter() {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isStreaming = true;
+    });
+
+    final stream = _controller!.startImageStream((CameraImage image) {
+      // Process the video frame here if needed before sending it to the backend.
+      // Example: Convert the CameraImage to a base64-encoded byte array.
+      List<int> imageBytes = getImageBytes(image);
+
+      // Send the video frame to the backend.
+      sendVideoStream(imageBytes);
+    });
+
+    // You can choose to stop the streaming after a certain duration or condition.
+    // _controller!.stopImageStream(stream);
+  }
+
+  void _stopStreaming() {
+    _controller!.stopImageStream();
+    setState(() {
+      _isStreaming = false;
     });
   }
 
+  void sendVideoStream(List<int> imageBytes) async {
+    // final url = Uri.parse('https://ee96-39-32-174-161.ngrok-free.app/video');
+    final url = Uri.parse('https://192.168.100.29/video');
+
+    try {
+      final response = await http.post(url,
+          body: imageBytes, headers: {'ngrok-skip-browser-warning': 'asd'});
+
+      // Handle the response from the backend if needed.
+      print('Response from backend: ${response.body}');
+    } catch (error) {
+      print('Error sending video stream: $error');
+    }
+  }
+
+  List<int> getImageBytes(CameraImage image) {
+    // Convert the CameraImage to a byte array in a suitable format for sending.
+    // Implement the conversion logic based on your requirements.
+    // Here's an example using the U8 format:
+    return image.planes.map((plane) {
+      return plane.bytes;
+    }).toList()[0];
+  }
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('Video Streaming App'),
+        ),
+        body: Column(
+          children: [
+            FutureBuilder<void>(
+              future: _initializeControllerFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.done) {
+                  return CameraPreview(_controller!);
+                } else {
+                  return const Center(child: CircularProgressIndicator());
+                }
+              },
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            FilledButton(
+                onPressed: () async {
+                  final url = Uri.parse('http://192.168.100.29:3063/text');
+
+                  final text = "sample text";
+
+                  try {
+                    final response = await http.post(url, body: {'text': text});
+
+                    // Handle the response from the backend if needed.
+                    print('Response from backend: ${response.body}');
+                  } catch (error) {
+                    print('Error sending text: $error');
+                  }
+                },
+                child: Text('Press')),
           ],
         ),
+        floatingActionButton: FloatingActionButton(
+          child: Icon(_isStreaming ? Icons.stop : Icons.play_arrow),
+          onPressed: _isStreaming ? _stopStreaming : _startStreaming,
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
+
+// import 'dart:io';
+// import 'package:flutter/material.dart';
+// import 'package:camera/camera.dart';
+// import 'package:http/http.dart' as http;
+//
+// void main() async {
+//   // Ensure that Flutter has access to the device's cameras.
+//   WidgetsFlutterBinding.ensureInitialized();
+//   final cameras = await availableCameras();
+//   final firstCamera = cameras.first;
+//
+//   runApp(MyApp(camera: firstCamera));
+// }
+//
+// class MyApp extends StatefulWidget {
+//   final CameraDescription camera;
+//
+//   const MyApp({Key? key, required this.camera}) : super(key: key);
+//
+//   @override
+//   _MyAppState createState() => _MyAppState();
+// }
+//
+// class _MyAppState extends State<MyApp> {
+//   CameraController? _controller;
+//   Future<void>? _initializeControllerFuture;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//     _controller = CameraController(widget.camera, ResolutionPreset.medium);
+//     _initializeControllerFuture = _controller!.initialize();
+//   }
+//
+//   @override
+//   void dispose() {
+//     _controller!.dispose();
+//     super.dispose();
+//   }
+//
+//   void _startStreaming() async {
+//     await _initializeControllerFuture;
+//
+//     final stream = _controller!.startImageStream((CameraImage image) {
+//       // Process the video frame here if needed before sending it to the backend.
+//
+//       // Convert the CameraImage to a base64-encoded byte array.
+//       List<int> imageBytes = getImageBytes(image);
+//
+//       // Send the video frame to the backend.
+//       sendVideoStream(imageBytes);
+//     });
+//
+//     // You can choose to stop the streaming after a certain duration or condition.
+//     // _controller!.stopImageStream(stream);
+//   }
+//
+//   void sendVideoStream(List<int> imageBytes) async {
+//     // Specify the backend API endpoint to receive the video stream.
+//     final url = Uri.parse('http://127.0.0.1:5000/video');
+//
+//     try {
+//       // Send the video frame data to the backend using a POST request.
+//       final response = await http.post(url, body: imageBytes);
+//
+//       // Handle the response from the backend if needed.
+//       print('Response from backend: ${response.body}');
+//     } catch (error) {
+//       // Handle any errors that occur during the HTTP request.
+//       print('Error sending video stream: $error');
+//     }
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return MaterialApp(
+//       home: Scaffold(
+//         appBar: AppBar(
+//           title: const Text('Video Streaming App'),
+//         ),
+//         body: FutureBuilder<void>(
+//           future: _initializeControllerFuture,
+//           builder: (context, snapshot) {
+//             if (snapshot.connectionState == ConnectionState.done) {
+//               return CameraPreview(_controller!);
+//             } else {
+//               return const Center(child: CircularProgressIndicator());
+//             }
+//           },
+//         ),
+//         floatingActionButton: FloatingActionButton(
+//           child: const Icon(Icons.camera),
+//           onPressed: _startStreaming,
+//         ),
+//       ),
+//     );
+//   }
+//
+//   List<int> getImageBytes(CameraImage image) {
+//     // Convert the CameraImage to a byte array in a suitable format for sending.
+//     // Implement the conversion logic based on your requirements.
+//     // Here's an example using the U8 format:
+//     return image.planes.map((plane) {
+//       return plane.bytes;
+//     }).toList()[0];
+//   }
+// }
